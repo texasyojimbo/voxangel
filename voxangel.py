@@ -16,12 +16,20 @@ is_PTT = False
 report_time = datetime.datetime.now()
 last_exceeded_threshold = datetime.datetime.now()
 
+def testAPI():
+	print ("foo")
+	
+def activateDevice():
+	print ("foo")
+
+def deactivateDevice():
+	print ("foo")
 
 print ("============================================================================")
 print ("voxangel v 0.1 --- A simple pyAudio-based VOX utility for SDRAngel          ")
 print ("----------------------------------------------------------------------------")
-if len(sys.argv) < 3:
-    print ("usage -- python voxangel.py <level> <delay_in_ms>")
+if len(sys.argv) < 5:
+    print ("usage -- python voxangel.py <level> <delay_in_ms> <host> <port> <device>")
     print ("----------------------------------------------------------------------------")
     print ("\n")
     print ("      <level> is the VOX threshold expressed as an integer ")
@@ -30,11 +38,20 @@ if len(sys.argv) < 3:
     print ("\n")
     print ("      <delay_in_ms> is delay for VOX to turn off in milliseconds.")
     print ("\n")
+    print ("      <host> is the hostname or IP address of the SDRAngel server.")
+    print ("\n")
+    print ("      <port> is the port of the SDRAngel server.")
+    print ("\n")
+    print ("      <device> is the SDRAngel device number of the device to control.")
+    print ("\n")
     print ("----------------------------------------------------------------------------")
     print ("Bye.")
     sys.exit()
 rms_threshold = int(sys.argv[1])
 off_delay = datetime.timedelta(milliseconds=int(sys.argv[2]))
+sdrangel_host = str(sys.argv[3])
+sdrangel_port = int(sys.argv[4])
+sdrangel_dev  = int(sys.argv[5])
 print ("Opening PortAudio default device... (warnings below usually may be ignored.)")
 print ("----------------------------------------------------------------------------")
 pa = pyaudio.PyAudio()
@@ -82,7 +99,7 @@ try:
 
 except KeyboardInterrupt:
     print ("\n")
-    print ("---------------------------------------------------------------------------------------------")
+    print ("----------------------------------------------------------------------------")
     print ("Bye.")
     stream.stop_stream()
     stream.close()
