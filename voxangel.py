@@ -1,10 +1,9 @@
 import os
 import sys
+import math
 import pyaudio
 import audioop
 import datetime
-from ctypes import *
-from contextlib import contextmanager
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -12,20 +11,38 @@ CHANNELS = 2
 RATE = 44100
 RECORD_SECONDS = 0.025
 
-last_1 = 0
-last_2 = 0
-last_3 = 0
 is_PTT = False
 
-print ("=============================================================================================")
-print ("voxangel v 0.1 --- A simple pyAudio-based VOX utility for SDRAngel                           ")
-print ("---------------------------------------------------------------------------------------------")
+report_time = datetime.datetime.now()
+last_exceeded_threshold = datetime.datetime.now()
+
+
+print ("============================================================================")
+print ("voxangel v 0.1 --- A simple pyAudio-based VOX utility for SDRAngel          ")
+print ("----------------------------------------------------------------------------")
+if len(sys.argv) < 3:
+    print ("usage -- python voxangel.py <level> <delay_in_ms>")
+    print ("----------------------------------------------------------------------------")
+    print ("\n")
+    print ("      <level> is the VOX threshold expressed as an integer ")
+    print ("      corresponding to percent of maximum possible loudness")
+    print ("      ( 5 is probably a good value).")
+    print ("\n")
+    print ("      <delay_in_ms> is delay for VOX to turn off in milliseconds.")
+    print ("\n")
+    print ("----------------------------------------------------------------------------")
+    print ("Bye.")
+    sys.exit()
+rms_threshold = int(sys.argv[1])
+off_delay = datetime.timedelta(milliseconds=int(sys.argv[2]))
 print ("Opening PortAudio default device... (warnings below usually may be ignored.)")
-print ("---------------------------------------------------------------------------------------------")
+print ("----------------------------------------------------------------------------")
 pa = pyaudio.PyAudio()
-print ("---------------------------------------------------------------------------------------------")
-print ("Now listening for audio... Press CTRL + C to exit.                                          ")
-print ("---------------------------------------------------------------------------------------------")
+print ("\n")
+print ("----------------------------------------------------------------------------")
+print ("Now listening for audio... RMS Threshold is: "+str(rms_threshold))+"%"
+print ("Press CTRL + C to exit...  Delay is: "+str(int(sys.argv[2])))+"ms"
+print ("----------------------------------------------------------------------------")
 
 try:
     stream = pa.open(format=FORMAT,
@@ -38,20 +55,30 @@ try:
     while True:
         for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
              data = stream.read(CHUNK)
-             rms = audioop.rms(data, 2)    # here's where you calculate the volume
+             rms = math.floor(( audioop.rms(data, 2) / 32768.00 ) * 100)
 
-        if (rms > 0) and is_PTT == False :
-            print (str(datetime.datetime.now())+" -- START")
+        if (rms > rms_threshold) and is_PTT == True:
+            last_exceeded_threshold = datetime.datetime.now()
+		
+        if (rms > rms_threshold) and is_PTT == False :
+            print (str(datetime.datetime.now())+" -- STARTING....( "+str(rms)+"% )")
+            report_time = datetime.datetime.now()
             is_PTT = True
-
-        if (rms + last_1 + last_2 + last_3 == 0) and is_PTT == True:
-            print (str(datetime.datetime.now())+" -- STOP")
-            is_PTT = False
-
-        last_3 = last_2
-        last_2 = last_1
-        last_1 = rms
-
+		
+        if (rms < rms_threshold) and is_PTT == True:
+            if last_exceeded_threshold + off_delay < datetime.datetime.now():
+                print (str(datetime.datetime.now())+" -- STOPPING....( "+str(rms)+"% )")
+                report_time = datetime.datetime.now()
+                is_PTT = False
+		
+        if datetime.datetime.now() > (report_time + datetime.timedelta(seconds=5)):
+            if is_PTT == True:
+                print (str(datetime.datetime.now())+" -- PTT ON......( "+str(rms)+"% )") 
+                report_time = datetime.datetime.now()
+            if is_PTT == False: 
+                print (str(datetime.datetime.now())+" -- LISTENING...( "+str(rms)+"% )")
+                report_time = datetime.datetime.now()
+		
 
 except KeyboardInterrupt:
     print ("\n")
