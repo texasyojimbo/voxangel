@@ -7,6 +7,7 @@ import datetime
 import httplib
 import socket
 import json
+import numpy as np
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -105,19 +106,23 @@ def getDevice(host, port, dev):
 print ("============================================================================")
 print ("voxangel v 0.1 --- A simple pyAudio-based VOX utility for SDRAngel          ")
 print ("----------------------------------------------------------------------------")
-if len(sys.argv) < 5:
-    print ("usage -- python voxangel.py <level> <delay_in_ms> <host> <port> <device>")
+if len(sys.argv) < 7:
+    print ("$ python voxangel.py <level> <delay_in_ms> <channel> <host> <port> <device>")
     print ("----------------------------------------------------------------------------")
     print ("\n")
     print ("      <level> is the VOX threshold expressed as an integer ")
     print ("      corresponding to percent of maximum possible loudness")
-    print ("      ( 5 is probably a good value).")
+    print ("           (5 is probably a good value).")
     print ("\n")
     print ("      <delay_in_ms> is delay for VOX to turn off in milliseconds.")
     print ("\n")
-    print ("      <host> is the hostname or IP address of the SDRAngel server.")
+    print ("      <channel> is the listen channel.")
+    print ("           0 = left, 1 = right, 2 = stereo")
     print ("\n")
-    print ("      <port> is the port of the SDRAngel server.")
+    print ("      <host> is the hostname or IP address of the SDRAngel server.")
+    print ("           (usually 127.0.0.1)")
+    print ("\n")
+    print ("      <port> is the port of the SDRAngel server (usually 8091).")
     print ("\n")
     print ("      <device> is the SDRAngel device number of the device to control.")
     print ("\n")
@@ -126,17 +131,27 @@ if len(sys.argv) < 5:
     sys.exit()
 rms_threshold = int(sys.argv[1])
 off_delay = datetime.timedelta(milliseconds=int(sys.argv[2]))
-sdrangel_host = str(sys.argv[3])
-sdrangel_port = int(sys.argv[4])
-sdrangel_dev  = int(sys.argv[5])
+sdrangel_host = str(sys.argv[4])
+sdrangel_port = int(sys.argv[5])
+sdrangel_dev  = int(sys.argv[6])
+audio_channel = int(sys.argv[3])
+if audio_channel == 2:
+    audio_channel_tag = "(stereo)"
+elif audio_channel == 1:
+    audio_channel_tag = ".(right)"
+elif audio_channel == 0:
+    audio_channel_tag = "..(left)"
+else:
+    audio_channel = 2
+    audio_channel_tag = "stereo"
 print ("Opening PortAudio default device... \n...(warnings below usually may be ignored.)")
 pa = pyaudio.PyAudio()
 print ("----------------------------------------------------------------------------")
 print ("Testing SDRAngel REST API @ "+str(sdrangel_host)+":"+str(sdrangel_port)+"...")
 testAPI(sdrangel_host,sdrangel_port,sdrangel_dev)
 print ("----------------------------------------------------------------------------")
-print ("Now listening for audio... RMS Threshold is: "+str(rms_threshold))+"%"
-print ("Press CTRL + C to exit...  Delay is: "+str(int(sys.argv[2])))+"ms"
+print ("Now listening for audio..."+audio_channel_tag+"... VOX RMS Threshold is: "+str(rms_threshold))+"%"
+print ("Press CTRL + C to exit............... VOX Release Delay is: "+str(int(sys.argv[2])))+"ms"
 print ("----------------------------------------------------------------------------")
 
 try:
@@ -149,9 +164,13 @@ try:
 
     while True:
         for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-             data = stream.read(CHUNK)
-             rms = math.floor(( audioop.rms(data, 2) / 32768.00 ) * 100)
-
+            data = stream.read(CHUNK)
+            if audio_channel != 2:
+                data = np.fromstring(data, dtype=np.int16)
+                data = np.reshape(data, (CHUNK,2))
+                data = data[:, audio_channel].flatten().astype(np.int16).tostring()
+            rms = math.floor(( audioop.rms(data, 2) / 32768.00 ) * 100)
+				
         if (rms > rms_threshold) and is_PTT == True:
             last_exceeded_threshold = datetime.datetime.now()
 		
