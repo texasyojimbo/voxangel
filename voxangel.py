@@ -6,6 +6,7 @@ import audioop
 import datetime
 import httplib
 import socket
+import json
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -37,15 +38,32 @@ def testAPI(host, port, dev):
         print ("Bye.")
         sys.exit()
     else:
-        print (resp.read(4096))
-		
+        sdrangel_json = json.loads(resp.read(4096))
+        if sdrangel_json["tx"] != 1:
+            print "Selected device is not a sink / transmitter!"
+            print ("----------------------------------------------------------------------------")
+            print ("Bye.")
+            sys.exit()
+        else:
+            print (sdrangel_json["deviceHwType"]+" found...")
+            conn.request("GET","/sdrangel/deviceset/"+str(dev)+"/device/run")
+            resp = conn.getresponse()
+            sdrangel_json = json.loads(resp.read(4096))
+            if sdrangel_json["state"] != "idle":
+                print ("Selected device is already transmitting (state is not idle)!")
+                print ("----------------------------------------------------------------------------")
+                print ("Bye.")
+                sys.exit()
+            else:
+                print ("Device is ready.")
+
 	
 def activateDevice(host, port, dev):
     conn = httplib.HTTPConnection(host,port)
     try:
         conn.request("POST","/sdrangel/deviceset/"+str(dev)+"/device/run")
     except (httplib.HTTPException, socket.error):
-        print ("Could not create connection. Exiting...")
+        print (str(datetime.datetime.now())+"-- ERROR -- Could not create connection. Exiting...")
         print ("----------------------------------------------------------------------------")
         print ("Bye.")
         sys.exit()		
@@ -57,12 +75,32 @@ def deactivateDevice(host, port, dev):
     try:
         conn.request("DELETE","/sdrangel/deviceset/"+str(dev)+"/device/run")
     except (httplib.HTTPException, socket.error):
-        print ("Could not create connection. Exiting...")
+        print (str(datetime.datetime.now())+" -- ERROR -- Could not create connection. Exiting...")
         print ("----------------------------------------------------------------------------")
         print ("Bye.")
         sys.exit()		
     resp = conn.getresponse()
     print (str(datetime.datetime.now())+" -- >>> "+str(resp.status))
+
+def getDevice(host, port, dev):
+    conn = httplib.HTTPConnection(host,port)
+    try:
+        conn.request("GET","/sdrangel/deviceset/"+str(dev)+"/device/run")
+    except (httplib.HTTPException, socket.error):
+        print (str(datetime.datetime.now())+"Could not create connection. Exiting...")
+        print ("----------------------------------------------------------------------------")
+        print ("Bye.")
+        sys.exit()
+    resp = conn.getresponse()
+    if resp.status != 200:
+        return False
+    else:
+        sdrangel_json = json.loads(resp.read(4096))
+        if sdrangel_json["state"] == "idle":
+            return False
+        else:
+            return True
+
 
 print ("============================================================================")
 print ("voxangel v 0.1 --- A simple pyAudio-based VOX utility for SDRAngel          ")
@@ -132,7 +170,10 @@ try:
 		
         if datetime.datetime.now() > (report_time + datetime.timedelta(seconds=5)):
             if is_PTT == True:
-                print (str(datetime.datetime.now())+" -- PTT ON......( "+str(rms)+"% )") 
+                if (getDevice(sdrangel_host, sdrangel_port, sdrangel_dev)):
+                    print (str(datetime.datetime.now())+" -- PTT ON......( "+str(rms)+"% )") 
+                else:
+                    activateDevice(sdrangel_host, sdrangel_port, sdrangel_dev)
                 report_time = datetime.datetime.now()
             if is_PTT == False: 
                 print (str(datetime.datetime.now())+" -- LISTENING...( "+str(rms)+"% )")
@@ -141,6 +182,9 @@ try:
 
 except KeyboardInterrupt:
     print ("\n")
+    if is_PTT == True:
+        print (str(datetime.datetime.now())+" -- STOPPING....( "+str(rms)+"% )")
+        deactivateDevice(sdrangel_host, sdrangel_port, sdrangel_dev)
     print ("----------------------------------------------------------------------------")
     print ("Bye.")
     stream.stop_stream()
