@@ -4,6 +4,8 @@ import math
 import pyaudio
 import audioop
 import datetime
+import httplib
+import socket
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -16,14 +18,51 @@ is_PTT = False
 report_time = datetime.datetime.now()
 last_exceeded_threshold = datetime.datetime.now()
 
-def testAPI():
-	print ("foo")
+def testAPI(host, port, dev):
+    conn = httplib.HTTPConnection(host,port)
+    try:
+        conn.request("GET","/sdrangel/deviceset/"+str(dev)+"/device/report")
+    except (httplib.HTTPException, socket.error):
+        print ("Could not create connection. Exiting...")
+        print ("----------------------------------------------------------------------------")
+        print ("Bye.")
+        sys.exit()		
+    resp = conn.getresponse()
+    if resp.status != 200:
+        if resp.status == 404:
+            print ("Error 404 returned... Does specified SDRAngel device exist?")
+        else:
+            print ("Exiting after error response: "+str(resp.status)+" "+str(resp.reason))
+        print ("----------------------------------------------------------------------------")
+        print ("Bye.")
+        sys.exit()
+    else:
+        print (resp.read(4096))
+		
 	
-def activateDevice():
-	print ("foo")
+def activateDevice(host, port, dev):
+    conn = httplib.HTTPConnection(host,port)
+    try:
+        conn.request("POST","/sdrangel/deviceset/"+str(dev)+"/device/run")
+    except (httplib.HTTPException, socket.error):
+        print ("Could not create connection. Exiting...")
+        print ("----------------------------------------------------------------------------")
+        print ("Bye.")
+        sys.exit()		
+    resp = conn.getresponse()
+    print (str(datetime.datetime.now())+" -- >>> "+str(resp.status))
 
-def deactivateDevice():
-	print ("foo")
+def deactivateDevice(host, port, dev):
+    conn = httplib.HTTPConnection(host,port)
+    try:
+        conn.request("DELETE","/sdrangel/deviceset/"+str(dev)+"/device/run")
+    except (httplib.HTTPException, socket.error):
+        print ("Could not create connection. Exiting...")
+        print ("----------------------------------------------------------------------------")
+        print ("Bye.")
+        sys.exit()		
+    resp = conn.getresponse()
+    print (str(datetime.datetime.now())+" -- >>> "+str(resp.status))
 
 print ("============================================================================")
 print ("voxangel v 0.1 --- A simple pyAudio-based VOX utility for SDRAngel          ")
@@ -52,10 +91,11 @@ off_delay = datetime.timedelta(milliseconds=int(sys.argv[2]))
 sdrangel_host = str(sys.argv[3])
 sdrangel_port = int(sys.argv[4])
 sdrangel_dev  = int(sys.argv[5])
-print ("Opening PortAudio default device... (warnings below usually may be ignored.)")
-print ("----------------------------------------------------------------------------")
+print ("Opening PortAudio default device... \n...(warnings below usually may be ignored.)")
 pa = pyaudio.PyAudio()
-print ("\n")
+print ("----------------------------------------------------------------------------")
+print ("Testing SDRAngel REST API @ "+str(sdrangel_host)+":"+str(sdrangel_port)+"...")
+testAPI(sdrangel_host,sdrangel_port,sdrangel_dev)
 print ("----------------------------------------------------------------------------")
 print ("Now listening for audio... RMS Threshold is: "+str(rms_threshold))+"%"
 print ("Press CTRL + C to exit...  Delay is: "+str(int(sys.argv[2])))+"ms"
@@ -81,12 +121,14 @@ try:
             print (str(datetime.datetime.now())+" -- STARTING....( "+str(rms)+"% )")
             report_time = datetime.datetime.now()
             is_PTT = True
+            activateDevice(sdrangel_host, sdrangel_port, sdrangel_dev)
 		
         if (rms < rms_threshold) and is_PTT == True:
             if last_exceeded_threshold + off_delay < datetime.datetime.now():
                 print (str(datetime.datetime.now())+" -- STOPPING....( "+str(rms)+"% )")
                 report_time = datetime.datetime.now()
                 is_PTT = False
+                deactivateDevice(sdrangel_host, sdrangel_port, sdrangel_dev)
 		
         if datetime.datetime.now() > (report_time + datetime.timedelta(seconds=5)):
             if is_PTT == True:
